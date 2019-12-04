@@ -1,53 +1,28 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Globalization;
 using System.Net;
-using System.Net.Http;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Converters;
-using System.Runtime.Serialization;
+using System.Data;
+using System.Linq;
 
 namespace The_Kings_adbir_
 {
-    public partial class King
-    {
-        public static List<King> FromJson(string json) => JsonConvert.DeserializeObject<List<King>>(json, The_Kings_adbir_.Converter.Settings);
-    }
 
-    public static class Serialize
+    public class King
     {
-        public static string ToJson(this List<King> self) => JsonConvert.SerializeObject(self, The_Kings_adbir_.Converter.Settings);
-    }
 
-    internal static class Converter
-    {
-        public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
+        public King(int id, string nm, string cty, string hse, string yrs, int dur)
         {
-            MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
-            DateParseHandling = DateParseHandling.None,
-            Converters =
-            {
-                new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }
-            },
-        };
-    }
-    public partial class King
-    {
-        public List<King> data { get; set; }
-
-        public King(int Id, string Name, string Country, string House, string Reign, int Duration)
-        {
-            this.Id = Id;
-            this.Name = Name;
-            this.Country = Country;
-            this.House = House;
-            this.Reign = Reign;
-            this.Duration = Duration;
+            this.Id = id;
+            this.Name = nm;
+            this.Country = cty;
+            this.House = hse;
+            this.Years = yrs;
+            this.Duration = dur;
         }
+
         [JsonProperty("id")]
-        public int Id { get; set; }
+        public long Id { get; set; }
         [JsonProperty("nm")]
         public string Name { get; set; }
         [JsonProperty("cty")]
@@ -55,69 +30,48 @@ namespace The_Kings_adbir_
         [JsonProperty("hse")]
         public string House { get; set; }
         [JsonProperty("yrs")]
-        public string Reign { get; set; }
+        public string Years { get; set; }
         [JsonProperty("dur")]
-        public int Duration { get; set; }
+        public long Duration { get; set; }
     }
     
     class Program
     {
-        private static string  dataSource = "https://gist.githubusercontent.com/christianpanton/10d65ccef9f29de3acd49d97ed423736/raw/b09563bc0c4b318132c7a738e679d4f984ef0048/kings";
-        static dynamic  kings = GetDataArray(dataSource);
+        private static readonly string dataSource = "https://gist.githubusercontent.com/christianpanton/10d65ccef9f29de3acd49d97ed423736/raw/b09563bc0c4b318132c7a738e679d4f984ef0048/kings";
+        private static readonly string jsonString = GetData(dataSource);
+        private static readonly List<King> KingsList = JsonConvert.DeserializeObject<List<King>>(jsonString);
 
-        static readonly HttpClient client = new HttpClient();
-
-        static void ShowKing(King king)
+        static void ToString(King king)
         {
-            Console.WriteLine($"Navn: {king.Name}\tCountry:{king.Country}\tHouse:{king.House}\t");
+            Console.WriteLine($"Name: {king.Name}\tCountry:{king.Country}\tHouse:{king.House}\tReign:{king.Years}\tDuration:{king.Duration}");
         }
 
-        private static JArray GetDataArray(string url)
+        private static string GetData(string url)
         {
             using WebClient wc = new WebClient();
             var JsonString = wc.DownloadString(url);
-            JsonTextReader reader = new JsonTextReader(new StringReader(JsonString));
-            JArray JsonArray = JArray.Parse(JsonString) as JArray;
-            
-            Console.WriteLine(JsonString.ToString());
-            return JsonArray;
+            return JsonString;
         }
-        private static void NumberOfMonarchs()
-        {
-            Console.WriteLine($"There are {GetDataArray(dataSource).Count} monarchs in the list."); //1. How many monarchs are in the list?
-        }
-        private static JArray AppendDuration()
-        {
-            foreach (dynamic king in kings)
-            {
-                int duration = CalculateDuration(king);
-                JObject jObject = new JObject { { "dur", duration } };
-                king.Merge(jObject, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Concat });
-            }
-            return kings;
-        }
-
-        private static int CalculateDuration(dynamic king)
+        
+        private static int CalculateDuration(King king)
         {
             try
             {
-                string reign = king.GetValue("yrs");
-                string[] calculationArray = reign.Split("-");
-                int duration = Int32.Parse(calculationArray[1]) - Int32.Parse(calculationArray[0]);
-                return duration;
+                string[] yearsArray = king.Years.Split("-");
+                int duration = Int32.Parse(yearsArray[1]) - Int32.Parse(yearsArray[0]);
+                return duration;  
             }
             catch (IndexOutOfRangeException e) //Only 1 year given, no dash present.
             {
-                Console.WriteLine($"This regent only reigned for 1 year. ({king.GetValue("nm")})");
+                Console.WriteLine($"This regent only reigned for 1 year. ({king.Name}, {king.Years})");
                 //Console.Write(e);
                 return 1;
             }
             catch (FormatException e) //Dash present, but no second year.
             {
-                Console.WriteLine($"This regent is still alive. ({king.GetValue("nm")})");
+                Console.WriteLine($"This regent is still alive. ({king.Name}, {king.Years})");
                 //Console.Write(e);
-                
-                return DateTime.Now.Year-1952; 
+                return DateTime.Now.Year-Int32.Parse(king.Years.Remove(4)); 
             }
             catch (Exception e)
             {
@@ -126,36 +80,70 @@ namespace The_Kings_adbir_
             }
         }
 
+        private static List<King> AppendDuration()
+        {
+            foreach (dynamic king in KingsList)
+            {
+                int duration = CalculateDuration(king);
+                king.Duration = duration;
+            }
+            return KingsList;
+        }
+
+        private static void NumberOfMonarchs()
+        {
+            Console.WriteLine($"There are {KingsList.Count} monarchs in the list.");
+        }
 
         private static void LongestRulingMonarch()
         {
+            var timedKings = KingsList.OrderByDescending(x => x.Duration).ToArray();
 
+            Console.WriteLine($"{timedKings[0].Name} reigned for {timedKings[0].Duration} years.");
         }
 
-        
-
-    /*while(reader.Read())
-    {
-
-        if (reader.Value != null)
+        private static void LongestRulingHouse()
         {
-            Console.WriteLine("Token: {0}, Value: {1}", reader.TokenType, reader.Value);
+            var buildingHouseDuration =
+            from king in KingsList
+            group king by king.House into houseGroup
+            select new
+            {
+                House = houseGroup.Key,
+                TotalYears = houseGroup.Sum(x => x.Duration),
+            };
+            var houseDurations = buildingHouseDuration.OrderByDescending(x => x.TotalYears).ToArray();
+            
+            Console.WriteLine($"{houseDurations[0].House} reigned for {houseDurations[0].TotalYears} years.");
         }
-        else 
+
+        private static void PopularNames()
         {
-            Console.WriteLine("Token: {0}", reader.TokenType);
+            var namedSortedList = KingsList.OrderBy(x => x.Name).ToArray();
+
+            var buildingNamesList =
+                from king in namedSortedList
+                group king by king.Name.Split(" ")[0] into nameGroup
+                select new
+                {
+                    Name = nameGroup.Key,
+                    CountOfNames = nameGroup.Count(),
+                };
+            var names = buildingNamesList.OrderByDescending(x => x.CountOfNames).ToArray();
+            
+            Console.WriteLine($"{names[0].Name} was used {names[0].CountOfNames} times.");
         }
-    }*/
 
-
-    static void Main(string[] args)
+        static void Main(string[] args)
         {
-            //Console.WriteLine("Hello World!");
+            AppendDuration();
+            Console.WriteLine();
             NumberOfMonarchs();
-            JArray a = AppendDuration();
-        
             LongestRulingMonarch();
-
+            LongestRulingHouse();
+            PopularNames();
         }
+
+        
     }
 }
